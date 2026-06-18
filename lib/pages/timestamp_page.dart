@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
-import '../services/timestamp_service.dart';
-import '../widgets/tool_button.dart';
-import '../widgets/tool_page.dart';
 import '../core/clipboard_helper.dart';
 import '../core/snackbar_helper.dart';
+import '../core/timezone_constants.dart';
+import '../services/timestamp_service.dart';
+import '../widgets/tool_button.dart';
 import '../widgets/tool_input.dart';
-import '../widgets/tool_select.dart';
+import '../widgets/tool_page.dart';
 import '../widgets/tool_result_panel.dart';
+import '../widgets/tool_select.dart';
 
 class TimestampPage extends StatefulWidget {
   const TimestampPage({super.key});
@@ -18,14 +20,11 @@ class TimestampPage extends StatefulWidget {
 
 class _TimestampPageState extends State<TimestampPage> {
   final inputController = TextEditingController();
-  final outputController = TextEditingController();
 
-  String selectedTimezone = 'local';
+  String selectedTimezone = 'Asia/Shanghai';
+  String outputText = '';
 
-  final timezoneOptions = const <ToolSelectOption>[
-    ToolSelectOption(value: 'local', label: '本地时区'),
-    ToolSelectOption(value: 'utc', label: 'UTC'),
-  ];
+  final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
   void convertTimestamp() {
     final text = inputController.text.trim();
@@ -36,23 +35,30 @@ class _TimestampPageState extends State<TimestampPage> {
     }
 
     try {
-      final dateTime = TimestampService.fromTimestamp(text);
-
-      final displayDateTime = selectedTimezone == 'utc'
-          ? dateTime.toUtc()
-          : dateTime.toLocal();
-
-      final timezoneLabel = selectedTimezone == 'utc' ? 'UTC' : '本地时间';
+      final utcDateTime = TimestampService.fromTimestamp(text);
+      final targetDateTime = TimestampService.convertToTimezone(
+        utcDateTime,
+        selectedTimezone,
+      );
 
       setState(() {
-        outputController.text = [
-          '$timezoneLabel：$displayDateTime',
+        outputText = [
+          'Timezone: $selectedTimezone',
           '',
-          '本地时间：${dateTime.toLocal()}',
-          'UTC 时间：${dateTime.toUtc()}',
+          'Selected Time:',
+          dateFormat.format(targetDateTime),
           '',
-          '秒级时间戳：${TimestampService.toSeconds(dateTime)}',
-          '毫秒时间戳：${TimestampService.toMilliseconds(dateTime)}',
+          'UTC Time:',
+          dateFormat.format(utcDateTime.toUtc()),
+          '',
+          'Local Time:',
+          dateFormat.format(utcDateTime.toLocal()),
+          '',
+          'Unix Seconds:',
+          '${utcDateTime.millisecondsSinceEpoch ~/ 1000}',
+          '',
+          'Unix Milliseconds:',
+          '${utcDateTime.millisecondsSinceEpoch}',
         ].join('\n');
       });
     } catch (_) {
@@ -61,34 +67,32 @@ class _TimestampPageState extends State<TimestampPage> {
   }
 
   void useCurrentTime() {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
 
     setState(() {
-      inputController.text = TimestampService.toMilliseconds(now).toString();
+      inputController.text = now.millisecondsSinceEpoch.toString();
     });
 
     convertTimestamp();
   }
 
-  void clearAll() {
-    setState(() {
-      inputController.clear();
-      outputController.clear();
-    });
-  }
-
   Future<void> copyOutput() async {
-    final text = outputController.text;
-
-    if (text.isEmpty) {
-      SnackBarHelper.show(context, '没有可复制的内容');
+    if (outputText.isEmpty) {
+      showMessage('没有可复制的内容');
       return;
     }
 
-    await ClipboardHelper.copy(text);
+    await ClipboardHelper.copy(outputText);
 
     if (!mounted) return;
-    SnackBarHelper.show(context, '已复制');
+    showMessage('已复制');
+  }
+
+  void clearAll() {
+    setState(() {
+      inputController.clear();
+      outputText = '';
+    });
   }
 
   void showMessage(String message) {
@@ -98,46 +102,51 @@ class _TimestampPageState extends State<TimestampPage> {
   @override
   void dispose() {
     inputController.dispose();
-    outputController.dispose();
     super.dispose();
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return ToolPage(
-      toolbar: Row(
+      toolbar: Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          ToolButton(label: '转换', primary: true, onPressed: convertTimestamp),
-          const SizedBox(width: 8),
-          ToolButton(label: '当前时间', onPressed: useCurrentTime),
-          const SizedBox(width: 8),
-          ToolButton(label: '复制结果', onPressed: copyOutput),
-          const SizedBox(width: 8),
-          TextButton(onPressed: clearAll, child: const Text('清空')),
+          ToolButton(
+            label: '转换',
+            primary: true,
+            onPressed: convertTimestamp,
+          ),
+          ToolButton(
+            label: '当前时间',
+            onPressed: useCurrentTime,
+          ),
+          ToolButton(
+            label: '复制结果',
+            onPressed: copyOutput,
+          ),
+          ToolButton(
+            label: '清空',
+            onPressed: clearAll,
+          ),
         ],
       ),
       content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('显示时区：'),
-              const SizedBox(width: 12),
-              ToolSelect(
-                label: '显示时区',
-                value: selectedTimezone,
-                options: timezoneOptions,
-                onChanged: (value) {
-                  setState(() {
-                    selectedTimezone = value;
-                  });
+          ToolSelect(
+            label: '显示时区',
+            value: selectedTimezone,
+            options: TimezoneConstants.options,
+            onChanged: (value) {
+              setState(() {
+                selectedTimezone = value;
+              });
 
-                  if (inputController.text.trim().isNotEmpty) {
-                    convertTimestamp();
-                  }
-                },
-              ),
-            ],
+              if (inputController.text.trim().isNotEmpty) {
+                convertTimestamp();
+              }
+            },
           ),
           const SizedBox(height: 16),
           ToolInput(
@@ -150,9 +159,7 @@ class _TimestampPageState extends State<TimestampPage> {
           Expanded(
             child: ToolResultPanel(
               child: SelectableText(
-                outputController.text.isEmpty
-                    ? '转换结果会显示在这里'
-                    : outputController.text,
+                outputText.isEmpty ? '转换结果会显示在这里' : outputText,
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 14,

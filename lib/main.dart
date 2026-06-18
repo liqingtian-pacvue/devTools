@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:timezone/data/latest.dart' as tz;
 
 import 'core/theme_controller.dart';
 import 'pages/base64_page.dart';
@@ -10,6 +11,9 @@ final themeController = ThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  tz.initializeTimeZones();
+
   await themeController.load();
 
   runApp(const DevToolsApp());
@@ -82,7 +86,7 @@ class _HomePageState extends State<HomePage> {
     ),
     ToolItem(
       title: 'Timestamp Converter',
-      description: 'Convert Unix timestamps to readable dates',
+      description: 'Convert Unix timestamps across timezones',
       icon: Icons.schedule_outlined,
       page: TimestampPage(),
     ),
